@@ -12,7 +12,8 @@ export PATH="/opt/homebrew/opt/qtbase/bin:/opt/homebrew/opt/qt/bin:/opt/homebrew
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/build"
 DIST_DIR="${PROJECT_ROOT}/dist"
-APP_BUNDLE="${DIST_DIR}/FileZipper.app"
+STAGE_APP="/tmp/FileZipper_stage_$$.app"
+FINAL_APP="${DIST_DIR}/FileZipper.app"
 
 echo "==> [1/4] Configuring and building FileZipper in ${BUILD_DIR}..."
 mkdir -p "${BUILD_DIR}"
@@ -24,33 +25,34 @@ if [[ ! -d "${BUILD_DIR}/FileZipper.app" ]]; then
     exit 1
 fi
 
-echo "==> [2/4] Copying fresh FileZipper.app to ${DIST_DIR}..."
-mkdir -p "${DIST_DIR}"
-rm -rf "${APP_BUNDLE}"
-cp -R "${BUILD_DIR}/FileZipper.app" "${APP_BUNDLE}"
+echo "==> [2/4] Staging FileZipper.app in /tmp to avoid FileProvider extended attributes..."
+rm -rf "${STAGE_APP}"
+cp -R "${BUILD_DIR}/FileZipper.app" "${STAGE_APP}"
+xattr -cr "${STAGE_APP}"
 
 echo "==> [3/4] Running macdeployqt to bundle Qt 6 frameworks and plugins..."
 if ! command -v macdeployqt >/dev/null 2>&1; then
     echo "Error: macdeployqt not found in PATH. Install Qt 6 via 'brew install qtbase'." >&2
     exit 1
 fi
-macdeployqt "${APP_BUNDLE}" -always-overwrite -no-strip
+macdeployqt "${STAGE_APP}" -always-overwrite
 
 # Ensure Resources/qt.conf is present and points to bundled PlugIns
-mkdir -p "${APP_BUNDLE}/Contents/Resources"
-cat > "${APP_BUNDLE}/Contents/Resources/qt.conf" << 'EOF'
+mkdir -p "${STAGE_APP}/Contents/Resources"
+cat > "${STAGE_APP}/Contents/Resources/qt.conf" << 'EOF'
 [Paths]
 Plugins = PlugIns
 EOF
 
-echo "==> [4/4] Cleaning extended attributes and applying ad-hoc code signature..."
-xattr -cr "${APP_BUNDLE}"
-find "${APP_BUNDLE}/Contents/Frameworks" -name "*.framework" -exec codesign --force --sign - {} \;
-find "${APP_BUNDLE}/Contents/Frameworks" -name "*.dylib" -exec codesign --force --sign - {} \;
-find "${APP_BUNDLE}/Contents/PlugIns" -name "*.dylib" -exec codesign --force --sign - {} \;
-codesign --force --sign - "${APP_BUNDLE}/Contents/MacOS/FileZipper"
-codesign --force --sign - "${APP_BUNDLE}"
-codesign --verify --deep --strict "${APP_BUNDLE}"
+echo "==> [4/4] Signing and verifying standalone bundle..."
+xattr -cr "${STAGE_APP}"
+codesign --force --deep --sign - "${STAGE_APP}"
+codesign --verify --deep --strict "${STAGE_APP}"
+
+mkdir -p "${DIST_DIR}"
+rm -rf "${FINAL_APP}"
+cp -R "${STAGE_APP}" "${FINAL_APP}"
+rm -rf "${STAGE_APP}"
 
 echo "==> Successfully packaged and verified standalone application:"
-echo "    ${APP_BUNDLE}"
+echo "    ${FINAL_APP}"
