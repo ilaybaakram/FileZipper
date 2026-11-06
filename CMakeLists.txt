@@ -58,7 +58,7 @@ endif()
 
 message(STATUS "Building FileZipper GUI with ${QT_PACKAGE_PREFIX}")
 
-# Reusable GUI library (enables linking MainWindow into both FileZipper_gui and test_gui)
+# Reusable GUI library (enables linking MainWindow into both FileZipper and test_gui)
 add_library(filezipper_gui_lib STATIC
     include/main_window.h
     src/main_window.cpp
@@ -82,13 +82,19 @@ target_link_libraries(filezipper_gui_lib PUBLIC
     ${QT_PACKAGE_PREFIX}::Concurrent
 )
 
-# Desktop GUI Application Executable
-add_executable(FileZipper
+# Desktop GUI Application Executable (built as a macOS .app bundle on Apple platforms)
+add_executable(FileZipper MACOSX_BUNDLE
     src/main.cpp
 )
 
 set_target_properties(FileZipper PROPERTIES
     AUTOMOC ON
+    MACOSX_BUNDLE_BUNDLE_NAME "FileZipper"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "edu.dsa.filezipper"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_INFO_STRING "File Zipper — Huffman-Based Lossless File Compression Utility"
+    MACOSX_BUNDLE_COPYRIGHT "DSA Semester Project"
 )
 
 target_link_libraries(FileZipper PRIVATE

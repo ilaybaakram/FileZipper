@@ -1,75 +1,67 @@
 # FileZipper — Huffman-Based File Compression & Decompression Utility
 
-**FileZipper** is a Data Structures and Algorithms (DSA) semester project written in modern **C++17** with a **Qt 6** desktop graphical user interface. It implements lossless file compression and decompression completely from scratch using **Huffman Coding**, without relying on external compression libraries.
+**FileZipper** is a Data Structures and Algorithms (DSA) Complex Computing Problem (CCP) project implemented in modern **C++17** with a **Qt 6** desktop graphical user interface. It performs lossless file compression and decompression completely from scratch using **Huffman Coding**, and packages into a standalone, double-clickable macOS application bundle (`FileZipper.app`).
 
 ---
 
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Core DSA Concepts & Architecture](#core-dsa-concepts--architecture)
+2. [Features](#features)
+3. [Core DSA Concepts & Architecture](#core-dsa-concepts--architecture)
    - [1. Frequency Analysis](#1-frequency-analysis)
    - [2. Greedy Algorithm & Huffman Tree Construction](#2-greedy-algorithm--huffman-tree-construction)
    - [3. Role of the Min-Heap & Complexity Analysis](#3-role-of-the-min-heap--complexity-analysis)
    - [4. Prefix-Free Code Generation (DFS Tree Traversal)](#4-prefix-free-code-generation-dfs-tree-traversal)
    - [5. Bitwise Stream Packing & Custom `.huf` Archive Format](#5-bitwise-stream-packing--custom-huf-archive-format)
    - [6. Bitstream Decoding & Lossless File Decompression](#6-bitstream-decoding--lossless-file-decompression)
-   - [7. Qt 6 Desktop GUI & Asynchronous Worker Architecture](#7-qt-6-desktop-gui--asynchronous-worker-architecture)
-3. [Technology Stack](#technology-stack)
-4. [Project Structure](#project-structure)
-5. [Development Roadmap & Milestones](#development-roadmap--milestones)
-6. [Installing Dependencies, Building & Running](#installing-dependencies-building--running)
+4. [Requirements](#requirements)
+5. [Build from Source](#build-from-source)
+6. [Run Tests](#run-tests)
+7. [Package as a Standalone macOS App (`FileZipper.app`)](#package-as-a-standalone-macos-app-filezipperapp)
+8. [Launch & Install the App](#launch--install-the-app)
+9. [How to Use FileZipper](#how-to-use-filezipper)
+10. [Troubleshooting](#troubleshooting)
+11. [Project Structure](#project-structure)
 
 ---
 
 ## Project Overview
 
-Standard uncompressed files store every byte using a fixed-length 8-bit representation. **FileZipper** analyzes byte frequencies in an input file and constructs an optimal prefix-free binary tree (**Huffman Tree**). Frequently occurring bytes are assigned shorter bit sequences, while rarer bytes receive longer bit sequences, significantly reducing overall file size on repetitive or text-heavy data.
+Standard uncompressed files represent every byte using a fixed 8-bit width. **FileZipper** scans an input file in binary mode, counts the exact occurrence frequency of all 256 byte values (`0x00`–`0xFF`), and builds an optimal prefix-free binary tree (**Huffman Tree**) using a Min-Heap priority queue. High-frequency bytes receive short bit sequences (as short as 1 bit), while rare bytes receive longer bit sequences, reducing overall file size on text and repetitive binary data with 100% lossless recovery.
 
-### Key Design Goals
-- **From-Scratch DSA Implementation**: Custom tree nodes, priority queue integration, prefix code table generation, and bitwise file I/O streams.
-- **Clean Architecture**: Strict separation between the core C++ compression engine (`huffman_core`) and the Qt 6 presentation layer (`FileZipper`).
-- **Binary-Safe**: Uses `unsigned char` (`0x00`–`0xFF`) and 64-bit counters (`std::uint64_t`) to safely process both text and arbitrary binary files (including null bytes).
-- **Responsive Desktop GUI**: Uses `QtConcurrent::run` and `QFutureWatcher` so large file compression and decompression never freeze the main UI thread.
+---
+
+## Features
+
+- **Lossless File Compression**: Compresses any text or binary file into a portable `.huf` archive.
+- **Lossless File Decompression**: Reconstructs the exact Huffman Tree from the `.huf` header and restores the original file byte-for-byte.
+- **Custom `.huf` Binary Format**: Uses a 4-byte `'HUF1'` magic signature, 64-bit little-endian file size and bit counters, and a 256-entry frequency table for cross-platform safety.
+- **Modern Qt 6 Desktop GUI**: Dark-themed desktop interface with drag-and-drop file support, automatic operation mode detection, custom vector tree icon, and non-blocking background worker threads (`QtConcurrent`).
+- **Live Compression Statistics**: Displays original file size, compressed/restored size, compression ratio, space saved percentage, and decoded bit counts.
+- **Standalone macOS `.app` Bundle**: Self-contained `dist/FileZipper.app` bundled with Qt 6 frameworks and plugins (`libqcocoa.dylib`) so it can be launched directly from Finder or `/Applications` without a terminal or IDE.
 
 ---
 
 ## Core DSA Concepts & Architecture
 
 ### 1. Frequency Analysis
-Before constructing a Huffman Tree, we must know how often each byte value appears in the input file.
-- **Direct-Address Lookup Table (`std::array<std::uint64_t, 256>`)**: Because a byte has exactly $2^8 = 256$ possible values (`0` to `255`), `FrequencyAnalyzer` uses a fixed-size 256-entry array (`FrequencyTable`). Indexing by `unsigned char` provides $O(1)$ lookup and update time with zero hash collisions or dynamic allocation overhead.
-- **Binary Mode Streaming**: Files are read in `std::ios::binary` mode using a 4 KB buffer (`char buffer[4096]`), ensuring newline characters (`\r`, `\n`), null bytes (`0x00`), and high-bit bytes (`0x80`–`0xFF`) are counted without corruption.
+- **Direct-Address Lookup Table (`std::array<std::uint64_t, 256>`)**: `FrequencyAnalyzer` uses a fixed 256-entry array (`FrequencyTable`) indexed by `unsigned char` (`0..255`), providing $O(1)$ update and lookup time per byte.
+- **Binary Mode Streaming**: Files are read in `std::ios::binary` mode using a 4 KB buffer (`char buffer[4096]`), preserving newline bytes (`\r`, `\n`), null bytes (`0x00`), and high-bit bytes (`0x80`–`0xFF`).
 
 ### 2. Greedy Algorithm & Huffman Tree Construction
-David Huffman's algorithm is a classic **Greedy Algorithm** that builds an optimal prefix-free binary tree from the bottom up:
-1. **Initialization**: Create a leaf `Node` for every unique byte with a non-zero frequency and insert it into a **Min-Heap**.
-2. **Greedy Choice**: At each step, extract the **two nodes with the smallest frequencies** (`leftChild` and `rightChild`). Making the least frequent symbols the deepest nodes in the tree guarantees that more frequent symbols stay closer to the root.
-3. **Subtree Merging**: Create a new internal parent `Node` whose frequency is `leftChild->frequency + rightChild->frequency`, attach the two extracted nodes as its `left` and `right` children, and push the parent back into the Min-Heap.
-4. **Termination**: Repeat until only a single node remains in the Min-Heap; this node is the root of the Huffman Tree whose frequency equals the total bytes in the file.
-5. **Edge Cases Handled**:
-   - **Empty Input (0 bytes)**: Produces an empty tree (`root == nullptr`).
-   - **Single Unique Byte (e.g., `"AAAAA"`)**: Produces a single-node tree where the root itself is the leaf node.
-   - **Deterministic Tie-Breaking**: When two nodes have the exact same frequency, `CompareNode` breaks ties using their `character` value so the exact same tree topology is built across all platforms.
+1. **Initialization**: Create a leaf `Node` for every unique byte with a non-zero frequency and push it into a **Min-Heap**.
+2. **Greedy Choice**: Repeatedly extract the two lowest-frequency nodes (`leftChild` and `rightChild`) and merge them under a new internal parent `Node` whose frequency is their sum.
+3. **Deterministic Tie-Breaking**: When frequencies are equal, `CompareNode` breaks ties deterministically by `character` value so the exact same tree topology is reconstructed during decompression.
+4. **Edge Cases**: Safely handles 0-byte empty files (`root == nullptr`) and single-symbol files (`root->isLeaf() == true`).
 
 ### 3. Role of the Min-Heap & Complexity Analysis
-A **Min-Heap** (`std::priority_queue<Node*, std::vector<Node*>, CompareNode>`) allows the builder to repeatedly locate and extract the two minimum-frequency nodes efficiently.
-
-Let $N$ be the total number of bytes in the input file and $U \le 256$ be the number of unique byte values with non-zero frequency:
-- **Frequency Analysis Time**: $O(N)$ to scan all bytes in the input file once.
-- **Heap Insertion**: Inserting $U$ initial leaf nodes takes $O(U \log U)$ time.
-- **Tree Merging Loop**: Each of the $U - 1$ merge iterations performs two `pop()` operations and one `push()` operation on the Min-Heap, costing $O(\log U)$ per iteration, or $O(U \log U)$ total.
-- **Total Time Complexity**: $O(N + U \log U)$. Since $U \le 256$ is bounded by a small constant, tree construction is near-instantaneous once the $O(N)$ file scan completes.
-- **Space Complexity**: $O(U)$ auxiliary memory — the frequency table uses $256 \times 8 = 2\text{ KB}$, and the Huffman Tree contains at most $2U - 1 \le 511$ nodes.
+Let $N$ be the total bytes in the input file and $U \le 256$ be the number of unique bytes:
+- **Frequency Analysis**: $O(N)$ time, $O(1)$ auxiliary space ($2\text{ KB}$ table).
+- **Tree Construction**: $O(U \log U)$ time via `std::priority_queue<Node*, std::vector<Node*>, CompareNode>`, with at most $2U - 1 \le 511$ tree nodes.
 
 ### 4. Prefix-Free Code Generation (DFS Tree Traversal)
-Once the Huffman Tree is built, `CodeGenerator` performs a recursive **Depth-First Search (DFS)** from the root to every leaf to build a 256-entry lookup table (`CodeTable = std::array<std::string, 256>`):
-- **Branch Labelling**: Moving to `node->left` appends `'0'` to the active bitstring; moving to `node->right` appends `'1'`.
-- **Prefix-Free Property**: Because only **leaf nodes** represent actual bytes (internal nodes hold no characters), no valid byte code can ever be a prefix of another byte's code. This allows a decoder to read a packed bitstream bit-by-bit without needing delimiter symbols between codes.
-- **Single-Symbol Edge Case**: When the input file contains only 1 unique byte (e.g. `"AAAAAAA"`), the root itself is a leaf node at depth 0. `CodeGenerator` explicitly assigns it the 1-bit code `"0"` so that each occurrence is encoded cleanly as 1 bit.
-- **Code Generation Complexity**:
-  - **Time Complexity**: $O(U)$ to visit all $2U - 1$ nodes in the Huffman Tree (where $U \le 256$ is the number of unique symbols), and $O(1)$ lookup per byte during encoding via the 256-entry `std::array<std::string, 256>`.
-  - **Space Complexity**: $O(U \cdot H)$ where $H \le U$ is the height of the Huffman Tree (recursive call stack depth and stored bitstring lengths).
+`CodeGenerator` traverses the Huffman Tree via recursive **Depth-First Search (DFS)**, appending `'0'` on left branches and `'1'` on right branches (`CodeTable = std::array<std::string, 256>`). Single-symbol trees assign `"0"` (1 bit per symbol).
 
 #### Example Code Table (`"ABRACADABRA"` — 11 bytes / 88 raw bits)
 | Character | Frequency | Huffman Code | Code Length (bits) | Total Bits (`Freq × Len`) |
@@ -82,43 +74,134 @@ Once the Huffman Tree is built, `CodeGenerator` performs a recursive **Depth-Fir
 | **Total** | **11 bytes** | — | — | **23 bits (73.9% reduction vs. 88 bits)** |
 
 ### 5. Bitwise Stream Packing & Custom `.huf` Archive Format
-Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output variable-length Huffman codes:
-- **`BitWriter` (`include/bit_writer.h`)**: Packs individual `'0'` and `'1'` bits into an 8-bit buffer (`uint8_t currentByte_`) from **Most Significant Bit (MSB, bit 7)** down to **Least Significant Bit (LSB, bit 0)** using `currentByte_ = (currentByte_ << 1) | bit`. Whenever 8 bits are collected, a full byte is written to the output stream. At the end of the file, `flush()` left-shifts any remaining partial byte (`currentByte_ << (8 - bitCount_)`) to pad unused lower bits with zeros and tracks the exact number of meaningful bits written.
-- **Portable `.huf` File Format (`include/file_compressor.h`)**:
-  All multi-byte integer fields are serialized byte-by-byte in **Little-Endian (LE)** order using fixed-width types (`std::uint64_t`), avoiding raw struct writes that could suffer from compiler padding or endianness mismatches:
+`BitWriter` packs individual `'0'` and `'1'` bits MSB-first into 8-bit bytes and pads the final partial byte with trailing zeros. `FileCompressor` writes the portable 2068-byte little-endian header followed by the packed bitstream:
 
-  | Offset (Bytes) | Size (Bytes) | Field | Type | Description |
-  | :---: | :---: | :--- | :--- | :--- |
-  | `0` | `4` | **Magic Signature** | `char[4]` | `'H'`, `'U'`, `'F'`, `'1'` identifier |
-  | `4` | `8` | **Original File Size** | `uint64_t` (LE) | Exact uncompressed size in bytes |
-  | `12` | `2048` | **Frequency Table** | `uint64_t[256]` (LE) | Occurrence counts for all 256 byte values (`0x00`–`0xFF`) |
-  | `2060` | `8` | **Encoded Bit Count** | `uint64_t` (LE) | Total number of meaningful (unpadded) encoded bits |
-  | `2068` | $\lceil\text{bits}/8\rceil$ | **Compressed Bitstream** | `uint8_t[]` | MSB-first packed Huffman codes (0-padded in final byte) |
+| Offset (Bytes) | Size (Bytes) | Field | Type | Description |
+| :---: | :---: | :--- | :--- | :--- |
+| `0` | `4` | **Magic Signature** | `char[4]` | `'H'`, `'U'`, `'F'`, `'1'` identifier |
+| `4` | `8` | **Original File Size** | `uint64_t` (LE) | Exact uncompressed size in bytes |
+| `12` | `2048` | **Frequency Table** | `uint64_t[256]` (LE) | Occurrence counts for all 256 byte values (`0x00`–`0xFF`) |
+| `2060` | `8` | **Encoded Bit Count** | `uint64_t` (LE) | Total number of meaningful (unpadded) encoded bits |
+| `2068` | $\lceil\text{bits}/8\rceil$ | **Compressed Bitstream** | `uint8_t[]` | MSB-first packed Huffman codes (0-padded in final byte) |
 
 ### 6. Bitstream Decoding & Lossless File Decompression
-`FileDecompressor` (`include/file_decompressor.h`) reverses the compression pipeline to restore the exact original file byte-for-byte:
-1. **Header Validation**: Reads the 2068-byte `.huf` header, verifies the `'HUF1'` magic signature, checks that the sum of the 256 frequency counts equals `originalFileSize` (without 64-bit overflow), and verifies sufficient payload bytes exist on disk.
-2. **Deterministic Tree Reconstruction**: Passes the header's `FrequencyTable` to `HuffmanTree::buildFromFrequencies`. Because `CompareNode` breaks ties deterministically, the reconstructed tree is identical to the compression tree.
-3. **MSB-First Bit Reading (`BitReader`)**: `BitReader` extracts bits from bit 7 down to bit 0 of each payload byte (`(currentByte_ >> bitsRemainingInByte_) & 1`) and stops immediately once `encodedBitCount` meaningful bits have been read, ignoring trailing padding bits.
-4. **Root-to-Leaf Tree Walk**: Starting at `root`, each `0` bit moves to `current->left` and each `1` bit moves to `current->right`. When a leaf node is reached, `current->character` is emitted to the output buffer and `current` resets to `root` until `originalFileSize` bytes are restored.
-
-### 7. Qt 6 Desktop GUI & Asynchronous Worker Architecture
-`MainWindow` (`include/main_window.h` / `src/main_window.cpp`) provides a dark-themed desktop interface built with Qt Widgets:
-- **Custom Vector Logo**: Rendered procedurally with `QPainter` (`createAppLogoPixmap`), depicting a Huffman binary tree inside a rounded gradient badge.
-- **Drag-and-Drop Card (`DropZoneFrame`)**: Accepts local files dragged from Finder/Explorer, auto-detects `.huf` files to switch into Decompress mode, and displays file size badges.
-- **Non-Blocking Background Execution**: Compression and decompression run on a background worker thread via `QtConcurrent::run` monitored by `QFutureWatcher<OperationResult>`. While active, conflicting controls are disabled and an indeterminate `QProgressBar` animates smoothly on the main thread.
-- **Live Statistics & Completion Banner**: Displays original size, compressed/restored size, compression ratio, space saved percentage, and quick action buttons (*Open Output Folder* and *Perform Another Operation*).
+`FileDecompressor` validates the `'HUF1'` header and frequency sum, rebuilds the Huffman Tree, and uses `BitReader` to walk from `root` to leaf (`0` = left, `1` = right) for exactly `encodedBitCount` meaningful bits, ignoring trailing zero-padding bits.
 
 ---
 
-## Technology Stack
+## Requirements
 
-| Component | Technology |
-| :--- | :--- |
-| **Core Language** | C++17 |
-| **Desktop GUI** | Qt 6 (`Qt6::Core`, `Qt6::Gui`, `Qt6::Widgets`, `Qt6::Concurrent`) |
-| **Build System** | CMake (>= 3.16) & CTest |
-| **Version Control** | Git & GitHub |
+- **Operating System**: macOS (Apple Silicon or Intel)
+- **C++ Compiler**: AppleClang / Clang / GCC supporting **C++17** (Xcode Command Line Tools: `xcode-select --install`)
+- **Build System**: **CMake** `>= 3.16`
+- **GUI Framework**: **Qt 6** (`qtbase` `>= 6.2`, tested with Qt `6.12.0`)
+
+Install CMake and Qt 6 on macOS using [Homebrew](https://brew.sh):
+```bash
+brew install cmake qtbase
+```
+
+---
+
+## Build from Source
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/ilaybaakram/FileZipper.git
+cd FileZipper
+
+# 2. Configure and build in Release mode
+mkdir -p build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+This builds:
+- `libhuffman_core.a` — The standalone C++17 Huffman compression/decompression engine
+- `build/FileZipper.app` — The macOS GUI application bundle
+- 8 automated unit and GUI integration test executables
+
+---
+
+## Run Tests
+
+Run all 8 unit and GUI integration test suites using CTest:
+```bash
+ctest --test-dir build --output-on-failure -V
+```
+
+---
+
+## Package as a Standalone macOS App (`FileZipper.app`)
+
+To bundle all required Qt 6 frameworks (`QtCore`, `QtGui`, `QtWidgets`, `QtConcurrent`, `QtDBus`), image/style plugins, and the macOS Cocoa platform plugin (`libqcocoa.dylib`) into a self-contained `.app` inside `dist/FileZipper.app`:
+
+```bash
+./scripts/package_macos.sh
+```
+
+What `./scripts/package_macos.sh` does:
+1. Configures and builds `FileZipper.app` in `Release` mode.
+2. Copies a clean bundle to `dist/FileZipper.app`.
+3. Runs `macdeployqt dist/FileZipper.app -always-overwrite` to embed Qt 6 frameworks, plugins, and `Resources/qt.conf` (`@executable_path/../Frameworks`).
+4. Applies an ad-hoc code signature (`codesign --force --deep --sign - dist/FileZipper.app`) so macOS allows local execution.
+
+---
+
+## Launch & Install the App
+
+### Launch from Finder
+1. Open **Finder** and navigate to your project folder: `~/Documents/CCP/dist/`
+2. Double-click **`FileZipper.app`** (shown as **FileZipper**).
+
+*(Or open the `dist` folder directly from Terminal with `open dist` and double-click `FileZipper.app`, or launch via `open dist/FileZipper.app`.)*
+
+### Install into `/Applications`
+To install **FileZipper** system-wide like any standard Mac app:
+- **Via Finder**: Drag `FileZipper.app` from `dist/` into your **Applications** folder.
+- **Via Terminal**:
+  ```bash
+  cp -R dist/FileZipper.app /Applications/
+  ```
+You can then launch **FileZipper** anytime from **Applications** or **Spotlight Search (Cmd + Space)**.
+
+---
+
+## How to Use FileZipper
+
+1. **Select a File**:
+   - Drag and drop any file directly onto the **File Selection** card, or click **Browse File...** to pick a file from Finder.
+   - The card displays the file's name, full path, and formatted byte size badge.
+2. **Compress a File**:
+   - When you select a normal file (e.g., `notes.txt`), **Compress File (Create .huf Archive)** is selected automatically.
+   - Review or customize the **Output Folder** and suggested **Output Filename** (`notes.txt.huf`).
+   - Click **Compress File**.
+3. **Decompress a `.huf` Archive**:
+   - When you select a `.huf` archive (e.g., `notes.txt.huf`), **Decompress Archive (Restore from .huf)** is selected automatically and a safe output name (such as `notes.txt` or `restored_notes.txt`) is suggested.
+   - Click **Decompress Archive**.
+4. **Understand the Results**:
+   - **Original Size / Compressed Size**: Exact byte counts before and after compression.
+   - **Compression Ratio**: `Compressed Size / Original Size` expressed as a percentage.
+   - **Space Saved**: Percentage of bytes saved (`100% - Compression Ratio`). *(Note: Very small files under ~2 KB may show `+header` overhead because the `.huf` header stores the 2068-byte frequency table; larger text or repetitive files typically save 35%–70%+).*
+   - Click **Open Output Folder** on the green completion banner to view the output file in Finder.
+
+---
+
+## Troubleshooting
+
+- **macOS Gatekeeper ("FileZipper cannot be opened because the developer cannot be verified")**:
+  If sharing `FileZipper.app` with teammates or your professor over AirDrop/email/zip, macOS quarantine may flag unsigned/ad-hoc apps. Fix by right-clicking `FileZipper.app` → **Open**, or run:
+  ```bash
+  xattr -cr /path/to/FileZipper.app
+  codesign --force --deep --sign - /path/to/FileZipper.app
+  ```
+- **Qt Platform Plugin Error ("Could not find the Qt platform plugin 'cocoa'")**:
+  Ensure you run `./scripts/package_macos.sh` (which runs `macdeployqt` to embed `Contents/PlugIns/platforms/libqcocoa.dylib` and `Contents/Resources/qt.conf`).
+- **CMake Cannot Find Qt6 (`Could not find a package configuration file provided by "Qt6"`)**:
+  Install `qtbase` via Homebrew (`brew install qtbase`) or pass your Qt path explicitly:
+  ```bash
+  cmake -S . -B build -DCMAKE_PREFIX_PATH="/opt/homebrew/opt/qtbase"
+  ```
 
 ---
 
@@ -126,9 +209,11 @@ Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output
 
 ```text
 FileZipper/
-├── CMakeLists.txt                  # Root CMake build, Qt 6 GUI, and CTest configuration
+├── CMakeLists.txt                  # Root CMake build, MACOSX_BUNDLE, and CTest config
 ├── README.md                       # Project documentation
-├── .gitignore                      # Ignored build artifacts and temporary files
+├── .gitignore                      # Ignored build/dist artifacts and temporary files
+├── scripts/
+│   └── package_macos.sh            # Automated standalone FileZipper.app bundler
 ├── include/
 │   ├── huffman_node.h              # Huffman Tree Node declaration & comparator
 │   ├── frequency_analyzer.h        # 256-byte binary frequency analyzer interface
@@ -149,7 +234,7 @@ FileZipper/
 │   ├── bit_reader.cpp              # Bit extraction & padding-aware stream reader
 │   ├── file_decompressor.cpp       # Tree reconstruction & bitstream decoding engine
 │   ├── main_window.cpp             # Dark-theme Qt 6 GUI & QtConcurrent integration
-│   └── main.cpp                    # Desktop application entry point
+│   └── main.cpp                    # Application entry point (GUI + CLI verification flags)
 └── tests/
     ├── test_huffman_node.cpp       # Unit tests for Node & CompareNode
     ├── test_huffman_tree.cpp       # Unit tests for FrequencyAnalyzer & HuffmanTree
@@ -159,59 +244,4 @@ FileZipper/
     ├── test_bit_reader.cpp         # Unit tests for BitReader & meaningful bit limits
     ├── test_file_decompressor.cpp  # Round-trip & malformed-archive unit tests
     └── test_gui.cpp                # Qt 6 GUI launch, compress, decompress & error tests
-```
-
----
-
-## Development Roadmap & Milestones
-
-- [x] **Milestone 1: Repository & Initial Project Setup**
-  - Project folder hierarchy (`include/`, `src/`, `tests/`)
-  - `Node` structure (`character`, `frequency`, `left`, `right`, constructor, `isLeaf()`, `CompareNode`, tree memory cleanup)
-  - Initial `CMakeLists.txt` and `test_huffman_node` unit test suite
-- [x] **Milestone 2: Frequency Counter & Huffman Tree Builder**
-  - Binary-safe 256-entry byte frequency analyzer (`FrequencyAnalyzer`, `FrequencyTable`)
-  - Greedy Min-Heap Huffman Tree construction (`HuffmanTree`) with deterministic tie-breaking and RAII memory management
-  - Comprehensive unit tests (`test_huffman_tree`) for text files, repeated symbols, binary/null bytes, empty inputs, and single-symbol files
-- [x] **Milestone 3: Prefix Code Generator**
-  - Recursive DFS traversal (`CodeGenerator`, `CodeTable`) mapping all 256 bytes to prefix-free `'0'`/`'1'` bitstrings
-  - Single-symbol `"0"` code handling, compressed bit calculation (`calculateTotalEncodedBits`), and prefix-free verification (`isPrefixFree`)
-  - Unit tests (`test_code_generator`) verifying prefix-free invariant, bit savings, and root-to-leaf decoding paths
-- [x] **Milestone 4: Bitwise File I/O & Compression Engine**
-  - MSB-first `BitWriter` bit-packing stream utility (`bit_writer.h` / `bit_writer.cpp`)
-  - Portable little-endian `.huf` binary archive header (`HufHeader`) and two-pass `FileCompressor` (`file_compressor.h` / `file_compressor.cpp`)
-  - Unit tests (`test_bit_writer`, `test_file_compressor`) verifying bit-packing, padding, `.huf` header integrity, empty/single-char/binary files, and compression statistics
-- [x] **Milestone 5: Decompression Engine & End-to-End Verification**
-  - MSB-first `BitReader` (`bit_reader.h` / `bit_reader.cpp`) with meaningful bit count tracking
-  - `FileDecompressor` (`file_decompressor.h` / `file_decompressor.cpp`) with header validation, tree reconstruction, bitstream decoding, and corruption detection
-  - Comprehensive round-trip and malformed-input unit tests (`test_bit_reader`, `test_file_decompressor`)
-- [x] **Milestone 6: Qt Desktop GUI Integration**
-  - Modern dark-themed Qt 6 desktop application (`MainWindow`, `DropZoneFrame`, `FileZipper`)
-  - Drag-and-drop file selection, automatic mode switching, asynchronous `QtConcurrent` worker execution, live statistics panel, and automated GUI integration test suite (`test_gui`)
-
----
-
-## Installing Dependencies, Building & Running
-
-### 1. Install Prerequisites (macOS / Homebrew)
-```bash
-brew install cmake qtbase
-```
-
-### 2. Configure and Build
-```bash
-mkdir -p build
-cd build
-cmake ..
-cmake --build .
-```
-
-### 3. Launch the Desktop GUI Application
-```bash
-./FileZipper
-```
-
-### 4. Run All Unit & GUI Integration Tests
-```bash
-ctest --output-on-failure -V
 ```
