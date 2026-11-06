@@ -45,6 +45,7 @@ ui_*.h
 # IDE and Editor files
 .vscode/
 .idea/
+.cache/
 *.swp
 *.swo
 *~
