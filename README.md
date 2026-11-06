@@ -141,10 +141,10 @@ To bundle all required Qt 6 frameworks (`QtCore`, `QtGui`, `QtWidgets`, `QtConcu
 ```
 
 What `./scripts/package_macos.sh` does:
-1. Configures and builds `FileZipper.app` in `Release` mode.
-2. Copies a clean bundle to `dist/FileZipper.app`.
-3. Runs `macdeployqt dist/FileZipper.app -always-overwrite` to embed Qt 6 frameworks, plugins, and `Resources/qt.conf` (`@executable_path/../Frameworks`).
-4. Applies an ad-hoc code signature (`codesign --force --deep --sign - dist/FileZipper.app`) so macOS allows local execution.
+1. Generates a multi-resolution macOS icon (`assets/FileZipper.icns`) from the custom blue/teal zipper icon (`assets/app_icon.png`) using `sips` and `iconutil`.
+2. Configures and builds `FileZipper.app` with `FileZipper.icns` embedded in `Contents/Resources/` and `CFBundleIconFile` configured in `Contents/Info.plist`.
+3. Stages the bundle in `/tmp` and runs `macdeployqt` to embed Qt 6 frameworks, plugins, and `Resources/qt.conf` (`@executable_path/../Frameworks`).
+4. Applies and verifies an ad-hoc code signature (`codesign --force --deep --sign -` and `codesign --verify --deep --strict`) before outputting `dist/FileZipper.app`.
 
 ---
 
@@ -212,6 +212,9 @@ FileZipper/
 ├── CMakeLists.txt                  # Root CMake build, MACOSX_BUNDLE, and CTest config
 ├── README.md                       # Project documentation
 ├── .gitignore                      # Ignored build/dist artifacts and temporary files
+├── assets/
+│   ├── app_icon.png                # Source custom blue/teal macOS zipper icon (PNG)
+│   └── FileZipper.icns             # Multi-resolution macOS bundle icon (.icns)
 ├── scripts/
 │   └── package_macos.sh            # Automated standalone FileZipper.app bundler
 ├── include/

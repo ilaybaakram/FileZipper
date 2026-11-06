@@ -12,10 +12,35 @@ export PATH="/opt/homebrew/opt/qtbase/bin:/opt/homebrew/opt/qt/bin:/opt/homebrew
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/build"
 DIST_DIR="${PROJECT_ROOT}/dist"
+ASSETS_DIR="${PROJECT_ROOT}/assets"
+ICON_SRC_PNG="${ASSETS_DIR}/app_icon.png"
+ICON_OUT_ICNS="${ASSETS_DIR}/FileZipper.icns"
+ICONSET_TMP="/tmp/FileZipper_$$.iconset"
 STAGE_APP="/tmp/FileZipper_stage_$$.app"
 FINAL_APP="${DIST_DIR}/FileZipper.app"
 
-echo "==> [1/4] Configuring and building FileZipper in ${BUILD_DIR}..."
+echo "==> [1/5] Generating macOS .icns icon from ${ICON_SRC_PNG}..."
+if [[ ! -f "${ICON_SRC_PNG}" ]]; then
+    echo "Error: Source icon PNG not found at ${ICON_SRC_PNG}" >&2
+    exit 1
+fi
+rm -rf "${ICONSET_TMP}"
+mkdir -p "${ICONSET_TMP}"
+sips -z 16 16     "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_16x16.png"      >/dev/null
+sips -z 32 32     "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_16x16@2x.png"   >/dev/null
+sips -z 32 32     "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_32x32.png"      >/dev/null
+sips -z 64 64     "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_32x32@2x.png"   >/dev/null
+sips -z 128 128   "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_128x128.png"    >/dev/null
+sips -z 256 256   "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_128x128@2x.png" >/dev/null
+sips -z 256 256   "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_256x256.png"    >/dev/null
+sips -z 512 512   "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_256x256@2x.png" >/dev/null
+sips -z 512 512   "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_512x512.png"    >/dev/null
+sips -z 1024 1024 "${ICON_SRC_PNG}" --out "${ICONSET_TMP}/icon_512x512@2x.png" >/dev/null
+iconutil -c icns "${ICONSET_TMP}" -o "${ICON_OUT_ICNS}"
+rm -rf "${ICONSET_TMP}"
+xattr -cr "${ICON_OUT_ICNS}"
+
+echo "==> [2/5] Configuring and building FileZipper in ${BUILD_DIR}..."
 mkdir -p "${BUILD_DIR}"
 cmake -S "${PROJECT_ROOT}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}" --target FileZipper
@@ -25,12 +50,15 @@ if [[ ! -d "${BUILD_DIR}/FileZipper.app" ]]; then
     exit 1
 fi
 
-echo "==> [2/4] Staging FileZipper.app in /tmp to avoid FileProvider extended attributes..."
+echo "==> [3/5] Staging FileZipper.app in /tmp to avoid FileProvider extended attributes..."
 rm -rf "${STAGE_APP}"
 cp -R "${BUILD_DIR}/FileZipper.app" "${STAGE_APP}"
+mkdir -p "${STAGE_APP}/Contents/Resources"
+cp "${ICON_OUT_ICNS}" "${STAGE_APP}/Contents/Resources/FileZipper.icns"
+cp "${ICON_SRC_PNG}" "${STAGE_APP}/Contents/Resources/app_icon.png"
 xattr -cr "${STAGE_APP}"
 
-echo "==> [3/4] Running macdeployqt to bundle Qt 6 frameworks and plugins..."
+echo "==> [4/5] Running macdeployqt to bundle Qt 6 frameworks and plugins..."
 if ! command -v macdeployqt >/dev/null 2>&1; then
     echo "Error: macdeployqt not found in PATH. Install Qt 6 via 'brew install qtbase'." >&2
     exit 1
@@ -44,7 +72,7 @@ cat > "${STAGE_APP}/Contents/Resources/qt.conf" << 'EOF'
 Plugins = PlugIns
 EOF
 
-echo "==> [4/4] Signing and verifying standalone bundle..."
+echo "==> [5/5] Signing and verifying standalone bundle..."
 xattr -cr "${STAGE_APP}"
 codesign --force --deep --sign - "${STAGE_APP}"
 codesign --verify --deep --strict "${STAGE_APP}"
@@ -53,6 +81,7 @@ mkdir -p "${DIST_DIR}"
 rm -rf "${FINAL_APP}"
 cp -R "${STAGE_APP}" "${FINAL_APP}"
 rm -rf "${STAGE_APP}"
+touch "${FINAL_APP}"
 
 echo "==> Successfully packaged and verified standalone application:"
 echo "    ${FINAL_APP}"

@@ -83,8 +83,16 @@ target_link_libraries(filezipper_gui_lib PUBLIC
 )
 
 # Desktop GUI Application Executable (built as a macOS .app bundle on Apple platforms)
+set(APP_ICON_ICNS "${PROJECT_SOURCE_DIR}/assets/FileZipper.icns")
+set(APP_ICON_PNG "${PROJECT_SOURCE_DIR}/assets/app_icon.png")
+set_source_files_properties(${APP_ICON_ICNS} ${APP_ICON_PNG} PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources"
+)
+
 add_executable(FileZipper MACOSX_BUNDLE
     src/main.cpp
+    ${APP_ICON_ICNS}
+    ${APP_ICON_PNG}
 )
 
 set_target_properties(FileZipper PROPERTIES
@@ -93,6 +101,7 @@ set_target_properties(FileZipper PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "edu.dsa.filezipper"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_ICON_FILE "FileZipper.icns"
     MACOSX_BUNDLE_INFO_STRING "File Zipper — Huffman-Based Lossless File Compression Utility"
     MACOSX_BUNDLE_COPYRIGHT "DSA Semester Project"
 )

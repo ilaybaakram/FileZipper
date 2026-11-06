@@ -92,6 +92,21 @@ MainWindow::~MainWindow() {
 }
 
 QPixmap MainWindow::createAppLogoPixmap(int size) const {
+    const QStringList candidatePaths = {
+        QCoreApplication::applicationDirPath() + "/../Resources/app_icon.png",
+        QCoreApplication::applicationDirPath() + "/assets/app_icon.png",
+        QCoreApplication::applicationDirPath() + "/../assets/app_icon.png",
+        "assets/app_icon.png"
+    };
+    for (const QString& path : candidatePaths) {
+        if (QFileInfo::exists(path)) {
+            QPixmap customIcon(path);
+            if (!customIcon.isNull()) {
+                return customIcon.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
+        }
+    }
+
     QPixmap pixmap(size, size);
     pixmap.fill(Qt::transparent);
 
