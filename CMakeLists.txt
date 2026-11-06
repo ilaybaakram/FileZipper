@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(FileZipper
-    VERSION 0.5.0
+    VERSION 1.0.0
     DESCRIPTION "Huffman-Based File Compression and Decompression Utility"
     LANGUAGES CXX
 )
@@ -21,7 +21,9 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Core DSA Engine Static Library
+# ============================================================================
+# Core DSA Engine Static Library (Independent of Qt)
+# ============================================================================
 add_library(huffman_core STATIC
     src/huffman_node.cpp
     src/frequency_analyzer.cpp
@@ -37,7 +39,65 @@ target_include_directories(huffman_core PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
 
-# Enable CTest for automated unit testing
+# ============================================================================
+# Qt 6 / Qt 5 Discovery & Desktop GUI Target
+# ============================================================================
+if(APPLE AND EXISTS "/opt/homebrew/opt/qtbase")
+    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/qtbase")
+elseif(APPLE AND EXISTS "/opt/homebrew/opt/qt")
+    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/qt")
+endif()
+
+find_package(Qt6 COMPONENTS Core Gui Widgets Concurrent QUIET)
+if(NOT Qt6_FOUND)
+    find_package(Qt5 COMPONENTS Core Gui Widgets Concurrent REQUIRED)
+    set(QT_PACKAGE_PREFIX Qt5)
+else()
+    set(QT_PACKAGE_PREFIX Qt6)
+endif()
+
+message(STATUS "Building FileZipper GUI with ${QT_PACKAGE_PREFIX}")
+
+# Reusable GUI library (enables linking MainWindow into both FileZipper_gui and test_gui)
+add_library(filezipper_gui_lib STATIC
+    include/main_window.h
+    src/main_window.cpp
+)
+
+set_target_properties(filezipper_gui_lib PROPERTIES
+    AUTOMOC ON
+    AUTOUIC ON
+    AUTORCC ON
+)
+
+target_include_directories(filezipper_gui_lib PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(filezipper_gui_lib PUBLIC
+    huffman_core
+    ${QT_PACKAGE_PREFIX}::Core
+    ${QT_PACKAGE_PREFIX}::Gui
+    ${QT_PACKAGE_PREFIX}::Widgets
+    ${QT_PACKAGE_PREFIX}::Concurrent
+)
+
+# Desktop GUI Application Executable
+add_executable(FileZipper
+    src/main.cpp
+)
+
+set_target_properties(FileZipper PROPERTIES
+    AUTOMOC ON
+)
+
+target_link_libraries(FileZipper PRIVATE
+    filezipper_gui_lib
+)
+
+# ============================================================================
+# Automated Unit & GUI Integration Tests (CTest)
+# ============================================================================
 enable_testing()
 
 add_executable(test_huffman_node
@@ -81,3 +141,10 @@ add_executable(test_file_decompressor
 )
 target_link_libraries(test_file_decompressor PRIVATE huffman_core)
 add_test(NAME FileDecompressorTest COMMAND test_file_decompressor)
+
+add_executable(test_gui
+    tests/test_gui.cpp
+)
+set_target_properties(test_gui PROPERTIES AUTOMOC ON)
+target_link_libraries(test_gui PRIVATE filezipper_gui_lib)
+add_test(NAME GuiIntegrationTest COMMAND test_gui)

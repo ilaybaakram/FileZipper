@@ -1,6 +1,6 @@
 # FileZipper — Huffman-Based File Compression & Decompression Utility
 
-**FileZipper** is a Data Structures and Algorithms (DSA) semester project written in modern **C++17** with a planned **Qt** desktop graphical user interface. It implements lossless file compression and decompression completely from scratch using **Huffman Coding**, without relying on external compression libraries.
+**FileZipper** is a Data Structures and Algorithms (DSA) semester project written in modern **C++17** with a **Qt 6** desktop graphical user interface. It implements lossless file compression and decompression completely from scratch using **Huffman Coding**, without relying on external compression libraries.
 
 ---
 
@@ -14,10 +14,11 @@
    - [4. Prefix-Free Code Generation (DFS Tree Traversal)](#4-prefix-free-code-generation-dfs-tree-traversal)
    - [5. Bitwise Stream Packing & Custom `.huf` Archive Format](#5-bitwise-stream-packing--custom-huf-archive-format)
    - [6. Bitstream Decoding & Lossless File Decompression](#6-bitstream-decoding--lossless-file-decompression)
+   - [7. Qt 6 Desktop GUI & Asynchronous Worker Architecture](#7-qt-6-desktop-gui--asynchronous-worker-architecture)
 3. [Technology Stack](#technology-stack)
 4. [Project Structure](#project-structure)
 5. [Development Roadmap & Milestones](#development-roadmap--milestones)
-6. [Building and Running Tests](#building-and-running-tests)
+6. [Installing Dependencies, Building & Running](#installing-dependencies-building--running)
 
 ---
 
@@ -27,9 +28,9 @@ Standard uncompressed files store every byte using a fixed-length 8-bit represen
 
 ### Key Design Goals
 - **From-Scratch DSA Implementation**: Custom tree nodes, priority queue integration, prefix code table generation, and bitwise file I/O streams.
-- **Clean Architecture**: Strict separation between the core C++ compression engine (`huffman_core`) and the presentation layer (CLI / Qt GUI).
+- **Clean Architecture**: Strict separation between the core C++ compression engine (`huffman_core`) and the Qt 6 presentation layer (`FileZipper`).
 - **Binary-Safe**: Uses `unsigned char` (`0x00`–`0xFF`) and 64-bit counters (`std::uint64_t`) to safely process both text and arbitrary binary files (including null bytes).
-- **Incremental & Tested**: Every milestone is accompanied by automated unit tests managed via CMake and CTest.
+- **Responsive Desktop GUI**: Uses `QtConcurrent::run` and `QFutureWatcher` so large file compression and decompression never freeze the main UI thread.
 
 ---
 
@@ -101,6 +102,13 @@ Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output
 3. **MSB-First Bit Reading (`BitReader`)**: `BitReader` extracts bits from bit 7 down to bit 0 of each payload byte (`(currentByte_ >> bitsRemainingInByte_) & 1`) and stops immediately once `encodedBitCount` meaningful bits have been read, ignoring trailing padding bits.
 4. **Root-to-Leaf Tree Walk**: Starting at `root`, each `0` bit moves to `current->left` and each `1` bit moves to `current->right`. When a leaf node is reached, `current->character` is emitted to the output buffer and `current` resets to `root` until `originalFileSize` bytes are restored.
 
+### 7. Qt 6 Desktop GUI & Asynchronous Worker Architecture
+`MainWindow` (`include/main_window.h` / `src/main_window.cpp`) provides a dark-themed desktop interface built with Qt Widgets:
+- **Custom Vector Logo**: Rendered procedurally with `QPainter` (`createAppLogoPixmap`), depicting a Huffman binary tree inside a rounded gradient badge.
+- **Drag-and-Drop Card (`DropZoneFrame`)**: Accepts local files dragged from Finder/Explorer, auto-detects `.huf` files to switch into Decompress mode, and displays file size badges.
+- **Non-Blocking Background Execution**: Compression and decompression run on a background worker thread via `QtConcurrent::run` monitored by `QFutureWatcher<OperationResult>`. While active, conflicting controls are disabled and an indeterminate `QProgressBar` animates smoothly on the main thread.
+- **Live Statistics & Completion Banner**: Displays original size, compressed/restored size, compression ratio, space saved percentage, and quick action buttons (*Open Output Folder* and *Perform Another Operation*).
+
 ---
 
 ## Technology Stack
@@ -108,7 +116,7 @@ Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output
 | Component | Technology |
 | :--- | :--- |
 | **Core Language** | C++17 |
-| **Desktop GUI** | Qt (planned for GUI milestone) |
+| **Desktop GUI** | Qt 6 (`Qt6::Core`, `Qt6::Gui`, `Qt6::Widgets`, `Qt6::Concurrent`) |
 | **Build System** | CMake (>= 3.16) & CTest |
 | **Version Control** | Git & GitHub |
 
@@ -118,7 +126,7 @@ Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output
 
 ```text
 FileZipper/
-├── CMakeLists.txt                  # Root CMake build and test configuration
+├── CMakeLists.txt                  # Root CMake build, Qt 6 GUI, and CTest configuration
 ├── README.md                       # Project documentation
 ├── .gitignore                      # Ignored build artifacts and temporary files
 ├── include/
@@ -129,7 +137,8 @@ FileZipper/
 │   ├── bit_writer.h                # MSB-first bit-packing writer
 │   ├── file_compressor.h           # .huf archive serializer & file compressor
 │   ├── bit_reader.h                # MSB-first bit reader with meaningful-bit limit
-│   └── file_decompressor.h         # .huf archive validator & file decompressor
+│   ├── file_decompressor.h         # .huf archive validator & file decompressor
+│   └── main_window.h               # Qt 6 MainWindow & DropZoneFrame declarations
 ├── src/
 │   ├── huffman_node.cpp            # Huffman Tree Node implementation
 │   ├── frequency_analyzer.cpp      # Binary file/stream/buffer frequency counting
@@ -138,7 +147,9 @@ FileZipper/
 │   ├── bit_writer.cpp              # Bit-packing & partial-byte padding implementation
 │   ├── file_compressor.cpp         # Two-pass Huffman file compression & .huf header I/O
 │   ├── bit_reader.cpp              # Bit extraction & padding-aware stream reader
-│   └── file_decompressor.cpp       # Tree reconstruction & bitstream decoding engine
+│   ├── file_decompressor.cpp       # Tree reconstruction & bitstream decoding engine
+│   ├── main_window.cpp             # Dark-theme Qt 6 GUI & QtConcurrent integration
+│   └── main.cpp                    # Desktop application entry point
 └── tests/
     ├── test_huffman_node.cpp       # Unit tests for Node & CompareNode
     ├── test_huffman_tree.cpp       # Unit tests for FrequencyAnalyzer & HuffmanTree
@@ -146,7 +157,8 @@ FileZipper/
     ├── test_bit_writer.cpp         # Unit tests for BitWriter full/partial byte packing
     ├── test_file_compressor.cpp    # Unit tests for FileCompressor & .huf format
     ├── test_bit_reader.cpp         # Unit tests for BitReader & meaningful bit limits
-    └── test_file_decompressor.cpp  # Round-trip & malformed-archive unit tests
+    ├── test_file_decompressor.cpp  # Round-trip & malformed-archive unit tests
+    └── test_gui.cpp                # Qt 6 GUI launch, compress, decompress & error tests
 ```
 
 ---
@@ -173,18 +185,20 @@ FileZipper/
   - MSB-first `BitReader` (`bit_reader.h` / `bit_reader.cpp`) with meaningful bit count tracking
   - `FileDecompressor` (`file_decompressor.h` / `file_decompressor.cpp`) with header validation, tree reconstruction, bitstream decoding, and corruption detection
   - Comprehensive round-trip and malformed-input unit tests (`test_bit_reader`, `test_file_decompressor`)
-- [ ] **Milestone 6: Qt Desktop GUI Integration**
-  - Modern desktop interface for selecting files, viewing compression ratios, and compressing/decompressing archives
+- [x] **Milestone 6: Qt Desktop GUI Integration**
+  - Modern dark-themed Qt 6 desktop application (`MainWindow`, `DropZoneFrame`, `FileZipper`)
+  - Drag-and-drop file selection, automatic mode switching, asynchronous `QtConcurrent` worker execution, live statistics panel, and automated GUI integration test suite (`test_gui`)
 
 ---
 
-## Building and Running Tests
+## Installing Dependencies, Building & Running
 
-### Prerequisites
-- A C++17 compatible compiler (`clang++`, `g++`, or MSVC)
-- **CMake** (version 3.16 or newer)
+### 1. Install Prerequisites (macOS / Homebrew)
+```bash
+brew install cmake qtbase
+```
 
-### Configure and Build
+### 2. Configure and Build
 ```bash
 mkdir -p build
 cd build
@@ -192,15 +206,12 @@ cmake ..
 cmake --build .
 ```
 
-### Run Unit Tests
+### 3. Launch the Desktop GUI Application
+```bash
+./FileZipper
+```
+
+### 4. Run All Unit & GUI Integration Tests
 ```bash
 ctest --output-on-failure -V
-# Or run the test binaries directly:
-./test_huffman_node
-./test_huffman_tree
-./test_code_generator
-./test_bit_writer
-./test_file_compressor
-./test_bit_reader
-./test_file_decompressor
 ```
