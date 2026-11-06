@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(FileZipper
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Huffman-Based File Compression and Decompression Utility"
     LANGUAGES CXX
 )
@@ -26,6 +26,7 @@ add_library(huffman_core STATIC
     src/huffman_node.cpp
     src/frequency_analyzer.cpp
     src/huffman_tree.cpp
+    src/code_generator.cpp
 )
 
 target_include_directories(huffman_core PUBLIC
@@ -46,3 +47,9 @@ add_executable(test_huffman_tree
 )
 target_link_libraries(test_huffman_tree PRIVATE huffman_core)
 add_test(NAME HuffmanTreeTest COMMAND test_huffman_tree)
+
+add_executable(test_code_generator
+    tests/test_code_generator.cpp
+)
+target_link_libraries(test_code_generator PRIVATE huffman_core)
+add_test(NAME CodeGeneratorTest COMMAND test_code_generator)

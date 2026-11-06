@@ -11,6 +11,7 @@
    - [1. Frequency Analysis](#1-frequency-analysis)
    - [2. Greedy Algorithm & Huffman Tree Construction](#2-greedy-algorithm--huffman-tree-construction)
    - [3. Role of the Min-Heap & Complexity Analysis](#3-role-of-the-min-heap--complexity-analysis)
+   - [4. Prefix-Free Code Generation (DFS Tree Traversal)](#4-prefix-free-code-generation-dfs-tree-traversal)
 3. [Technology Stack](#technology-stack)
 4. [Project Structure](#project-structure)
 5. [Development Roadmap & Milestones](#development-roadmap--milestones)
@@ -58,6 +59,25 @@ Let $N$ be the total number of bytes in the input file and $U \le 256$ be the nu
 - **Total Time Complexity**: $O(N + U \log U)$. Since $U \le 256$ is bounded by a small constant, tree construction is near-instantaneous once the $O(N)$ file scan completes.
 - **Space Complexity**: $O(U)$ auxiliary memory — the frequency table uses $256 \times 8 = 2\text{ KB}$, and the Huffman Tree contains at most $2U - 1 \le 511$ nodes.
 
+### 4. Prefix-Free Code Generation (DFS Tree Traversal)
+Once the Huffman Tree is built, `CodeGenerator` performs a recursive **Depth-First Search (DFS)** from the root to every leaf to build a 256-entry lookup table (`CodeTable = std::array<std::string, 256>`):
+- **Branch Labelling**: Moving to `node->left` appends `'0'` to the active bitstring; moving to `node->right` appends `'1'`.
+- **Prefix-Free Property**: Because only **leaf nodes** represent actual bytes (internal nodes hold no characters), no valid byte code can ever be a prefix of another byte's code. This allows a decoder to read a packed bitstream bit-by-bit without needing delimiter symbols between codes.
+- **Single-Symbol Edge Case**: When the input file contains only 1 unique byte (e.g. `"AAAAAAA"`), the root itself is a leaf node at depth 0. `CodeGenerator` explicitly assigns it the 1-bit code `"0"` so that each occurrence is encoded cleanly as 1 bit.
+- **Code Generation Complexity**:
+  - **Time Complexity**: $O(U)$ to visit all $2U - 1$ nodes in the Huffman Tree (where $U \le 256$ is the number of unique symbols), and $O(1)$ lookup per byte during encoding via the 256-entry `std::array<std::string, 256>`.
+  - **Space Complexity**: $O(U \cdot H)$ where $H \le U$ is the height of the Huffman Tree (recursive call stack depth and stored bitstring lengths).
+
+#### Example Code Table (`"ABRACADABRA"` — 11 bytes / 88 raw bits)
+| Character | Frequency | Huffman Code | Code Length (bits) | Total Bits (`Freq × Len`) |
+| :---: | :---: | :---: | :---: | :---: |
+| `'A'` | 5 | `"0"` | 1 | 5 |
+| `'R'` | 2 | `"10"` | 2 | 4 |
+| `'B'` | 2 | `"110"` | 3 | 6 |
+| `'C'` | 1 | `"1110"` | 4 | 4 |
+| `'D'` | 1 | `"1111"` | 4 | 4 |
+| **Total** | **11 bytes** | — | — | **23 bits (73.9% reduction vs. 88 bits)** |
+
 ---
 
 ## Technology Stack
@@ -81,14 +101,17 @@ FileZipper/
 ├── include/
 │   ├── huffman_node.h            # Huffman Tree Node declaration & comparator
 │   ├── frequency_analyzer.h      # 256-byte binary frequency analyzer interface
-│   └── huffman_tree.h            # Huffman Tree builder & RAII memory manager
+│   ├── huffman_tree.h            # Huffman Tree builder & RAII memory manager
+│   └── code_generator.h          # Prefix-free binary code table generator
 ├── src/
 │   ├── huffman_node.cpp          # Huffman Tree Node implementation
 │   ├── frequency_analyzer.cpp    # Binary file/stream/buffer frequency counting
-│   └── huffman_tree.cpp          # Min-heap greedy tree construction
+│   ├── huffman_tree.cpp          # Min-heap greedy tree construction
+│   └── code_generator.cpp        # Recursive DFS code generation & bit metrics
 └── tests/
     ├── test_huffman_node.cpp     # Unit tests for Node & CompareNode
-    └── test_huffman_tree.cpp     # Unit tests for FrequencyAnalyzer & HuffmanTree
+    ├── test_huffman_tree.cpp     # Unit tests for FrequencyAnalyzer & HuffmanTree
+    └── test_code_generator.cpp   # Unit tests for CodeGenerator & prefix-free property
 ```
 
 ---
@@ -103,8 +126,10 @@ FileZipper/
   - Binary-safe 256-entry byte frequency analyzer (`FrequencyAnalyzer`, `FrequencyTable`)
   - Greedy Min-Heap Huffman Tree construction (`HuffmanTree`) with deterministic tie-breaking and RAII memory management
   - Comprehensive unit tests (`test_huffman_tree`) for text files, repeated symbols, binary/null bytes, empty inputs, and single-symbol files
-- [ ] **Milestone 3: Prefix Code Generator**
-  - Recursive tree traversal to generate bitstring lookup tables
+- [x] **Milestone 3: Prefix Code Generator**
+  - Recursive DFS traversal (`CodeGenerator`, `CodeTable`) mapping all 256 bytes to prefix-free `'0'`/`'1'` bitstrings
+  - Single-symbol `"0"` code handling, compressed bit calculation (`calculateTotalEncodedBits`), and prefix-free verification (`isPrefixFree`)
+  - Unit tests (`test_code_generator`) verifying prefix-free invariant, bit savings, and root-to-leaf decoding paths
 - [ ] **Milestone 4: Bitwise File I/O & Compression Engine**
   - Bit-packing writer/reader, file header serialization, and `.huff` encoder
 - [ ] **Milestone 5: Decompression Engine & End-to-End Verification**
@@ -134,4 +159,5 @@ ctest --output-on-failure -V
 # Or run the test binaries directly:
 ./test_huffman_node
 ./test_huffman_tree
+./test_code_generator
 ```
