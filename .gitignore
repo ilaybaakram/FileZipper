@@ -57,6 +57,7 @@ ui_*.h
 Thumbs.db
 
 # Temporary / test data artifacts
+*.huf
 *.huff
 *.tmp
 *.bak

@@ -12,6 +12,7 @@
    - [2. Greedy Algorithm & Huffman Tree Construction](#2-greedy-algorithm--huffman-tree-construction)
    - [3. Role of the Min-Heap & Complexity Analysis](#3-role-of-the-min-heap--complexity-analysis)
    - [4. Prefix-Free Code Generation (DFS Tree Traversal)](#4-prefix-free-code-generation-dfs-tree-traversal)
+   - [5. Bitwise Stream Packing & Custom `.huf` Archive Format](#5-bitwise-stream-packing--custom-huf-archive-format)
 3. [Technology Stack](#technology-stack)
 4. [Project Structure](#project-structure)
 5. [Development Roadmap & Milestones](#development-roadmap--milestones)
@@ -78,6 +79,20 @@ Once the Huffman Tree is built, `CodeGenerator` performs a recursive **Depth-Fir
 | `'D'` | 1 | `"1111"` | 4 | 4 |
 | **Total** | **11 bytes** | — | — | **23 bits (73.9% reduction vs. 88 bits)** |
 
+### 5. Bitwise Stream Packing & Custom `.huf` Archive Format
+Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output variable-length Huffman codes:
+- **`BitWriter` (`include/bit_writer.h`)**: Packs individual `'0'` and `'1'` bits into an 8-bit buffer (`uint8_t currentByte_`) from **Most Significant Bit (MSB, bit 7)** down to **Least Significant Bit (LSB, bit 0)** using `currentByte_ = (currentByte_ << 1) | bit`. Whenever 8 bits are collected, a full byte is written to the output stream. At the end of the file, `flush()` left-shifts any remaining partial byte (`currentByte_ << (8 - bitCount_)`) to pad unused lower bits with zeros and tracks the exact number of meaningful bits written.
+- **Portable `.huf` File Format (`include/file_compressor.h`)**:
+  All multi-byte integer fields are serialized byte-by-byte in **Little-Endian (LE)** order using fixed-width types (`std::uint64_t`), avoiding raw struct writes that could suffer from compiler padding or endianness mismatches:
+
+  | Offset (Bytes) | Size (Bytes) | Field | Type | Description |
+  | :---: | :---: | :--- | :--- | :--- |
+  | `0` | `4` | **Magic Signature** | `char[4]` | `'H'`, `'U'`, `'F'`, `'1'` identifier |
+  | `4` | `8` | **Original File Size** | `uint64_t` (LE) | Exact uncompressed size in bytes |
+  | `12` | `2048` | **Frequency Table** | `uint64_t[256]` (LE) | Occurrence counts for all 256 byte values (`0x00`–`0xFF`) |
+  | `2060` | `8` | **Encoded Bit Count** | `uint64_t` (LE) | Total number of meaningful (unpadded) encoded bits |
+  | `2068` | $\lceil\text{bits}/8\rceil$ | **Compressed Bitstream** | `uint8_t[]` | MSB-first packed Huffman codes (0-padded in final byte) |
+
 ---
 
 ## Technology Stack
@@ -95,23 +110,29 @@ Once the Huffman Tree is built, `CodeGenerator` performs a recursive **Depth-Fir
 
 ```text
 FileZipper/
-├── CMakeLists.txt                # Root CMake build and test configuration
-├── README.md                     # Project documentation
-├── .gitignore                    # Ignored build artifacts and temporary files
+├── CMakeLists.txt                  # Root CMake build and test configuration
+├── README.md                       # Project documentation
+├── .gitignore                      # Ignored build artifacts and temporary files
 ├── include/
-│   ├── huffman_node.h            # Huffman Tree Node declaration & comparator
-│   ├── frequency_analyzer.h      # 256-byte binary frequency analyzer interface
-│   ├── huffman_tree.h            # Huffman Tree builder & RAII memory manager
-│   └── code_generator.h          # Prefix-free binary code table generator
+│   ├── huffman_node.h              # Huffman Tree Node declaration & comparator
+│   ├── frequency_analyzer.h        # 256-byte binary frequency analyzer interface
+│   ├── huffman_tree.h              # Huffman Tree builder & RAII memory manager
+│   ├── code_generator.h            # Prefix-free binary code table generator
+│   ├── bit_writer.h                # MSB-first bit-packing writer
+│   └── file_compressor.h           # .huf archive serializer & file compressor
 ├── src/
-│   ├── huffman_node.cpp          # Huffman Tree Node implementation
-│   ├── frequency_analyzer.cpp    # Binary file/stream/buffer frequency counting
-│   ├── huffman_tree.cpp          # Min-heap greedy tree construction
-│   └── code_generator.cpp        # Recursive DFS code generation & bit metrics
+│   ├── huffman_node.cpp            # Huffman Tree Node implementation
+│   ├── frequency_analyzer.cpp      # Binary file/stream/buffer frequency counting
+│   ├── huffman_tree.cpp            # Min-heap greedy tree construction
+│   ├── code_generator.cpp          # Recursive DFS code generation & bit metrics
+│   ├── bit_writer.cpp              # Bit-packing & partial-byte padding implementation
+│   └── file_compressor.cpp         # Two-pass Huffman file compression & .huf header I/O
 └── tests/
-    ├── test_huffman_node.cpp     # Unit tests for Node & CompareNode
-    ├── test_huffman_tree.cpp     # Unit tests for FrequencyAnalyzer & HuffmanTree
-    └── test_code_generator.cpp   # Unit tests for CodeGenerator & prefix-free property
+    ├── test_huffman_node.cpp       # Unit tests for Node & CompareNode
+    ├── test_huffman_tree.cpp       # Unit tests for FrequencyAnalyzer & HuffmanTree
+    ├── test_code_generator.cpp     # Unit tests for CodeGenerator & prefix-free property
+    ├── test_bit_writer.cpp         # Unit tests for BitWriter full/partial byte packing
+    └── test_file_compressor.cpp    # Unit tests for FileCompressor & .huf format
 ```
 
 ---
@@ -130,8 +151,10 @@ FileZipper/
   - Recursive DFS traversal (`CodeGenerator`, `CodeTable`) mapping all 256 bytes to prefix-free `'0'`/`'1'` bitstrings
   - Single-symbol `"0"` code handling, compressed bit calculation (`calculateTotalEncodedBits`), and prefix-free verification (`isPrefixFree`)
   - Unit tests (`test_code_generator`) verifying prefix-free invariant, bit savings, and root-to-leaf decoding paths
-- [ ] **Milestone 4: Bitwise File I/O & Compression Engine**
-  - Bit-packing writer/reader, file header serialization, and `.huff` encoder
+- [x] **Milestone 4: Bitwise File I/O & Compression Engine**
+  - MSB-first `BitWriter` bit-packing stream utility (`bit_writer.h` / `bit_writer.cpp`)
+  - Portable little-endian `.huf` binary archive header (`HufHeader`) and two-pass `FileCompressor` (`file_compressor.h` / `file_compressor.cpp`)
+  - Unit tests (`test_bit_writer`, `test_file_compressor`) verifying bit-packing, padding, `.huf` header integrity, empty/single-char/binary files, and compression statistics
 - [ ] **Milestone 5: Decompression Engine & End-to-End Verification**
   - Header parsing, tree reconstruction, bit-stream decoding, and round-trip integrity tests
 - [ ] **Milestone 6: Qt Desktop GUI Integration**
@@ -160,4 +183,6 @@ ctest --output-on-failure -V
 ./test_huffman_node
 ./test_huffman_tree
 ./test_code_generator
+./test_bit_writer
+./test_file_compressor
 ```
