@@ -13,6 +13,7 @@
    - [3. Role of the Min-Heap & Complexity Analysis](#3-role-of-the-min-heap--complexity-analysis)
    - [4. Prefix-Free Code Generation (DFS Tree Traversal)](#4-prefix-free-code-generation-dfs-tree-traversal)
    - [5. Bitwise Stream Packing & Custom `.huf` Archive Format](#5-bitwise-stream-packing--custom-huf-archive-format)
+   - [6. Bitstream Decoding & Lossless File Decompression](#6-bitstream-decoding--lossless-file-decompression)
 3. [Technology Stack](#technology-stack)
 4. [Project Structure](#project-structure)
 5. [Development Roadmap & Milestones](#development-roadmap--milestones)
@@ -93,6 +94,13 @@ Standard C++ streams (`std::ostream`) only write complete 8-bit bytes. To output
   | `2060` | `8` | **Encoded Bit Count** | `uint64_t` (LE) | Total number of meaningful (unpadded) encoded bits |
   | `2068` | $\lceil\text{bits}/8\rceil$ | **Compressed Bitstream** | `uint8_t[]` | MSB-first packed Huffman codes (0-padded in final byte) |
 
+### 6. Bitstream Decoding & Lossless File Decompression
+`FileDecompressor` (`include/file_decompressor.h`) reverses the compression pipeline to restore the exact original file byte-for-byte:
+1. **Header Validation**: Reads the 2068-byte `.huf` header, verifies the `'HUF1'` magic signature, checks that the sum of the 256 frequency counts equals `originalFileSize` (without 64-bit overflow), and verifies sufficient payload bytes exist on disk.
+2. **Deterministic Tree Reconstruction**: Passes the header's `FrequencyTable` to `HuffmanTree::buildFromFrequencies`. Because `CompareNode` breaks ties deterministically, the reconstructed tree is identical to the compression tree.
+3. **MSB-First Bit Reading (`BitReader`)**: `BitReader` extracts bits from bit 7 down to bit 0 of each payload byte (`(currentByte_ >> bitsRemainingInByte_) & 1`) and stops immediately once `encodedBitCount` meaningful bits have been read, ignoring trailing padding bits.
+4. **Root-to-Leaf Tree Walk**: Starting at `root`, each `0` bit moves to `current->left` and each `1` bit moves to `current->right`. When a leaf node is reached, `current->character` is emitted to the output buffer and `current` resets to `root` until `originalFileSize` bytes are restored.
+
 ---
 
 ## Technology Stack
@@ -119,20 +127,26 @@ FileZipper/
 │   ├── huffman_tree.h              # Huffman Tree builder & RAII memory manager
 │   ├── code_generator.h            # Prefix-free binary code table generator
 │   ├── bit_writer.h                # MSB-first bit-packing writer
-│   └── file_compressor.h           # .huf archive serializer & file compressor
+│   ├── file_compressor.h           # .huf archive serializer & file compressor
+│   ├── bit_reader.h                # MSB-first bit reader with meaningful-bit limit
+│   └── file_decompressor.h         # .huf archive validator & file decompressor
 ├── src/
 │   ├── huffman_node.cpp            # Huffman Tree Node implementation
 │   ├── frequency_analyzer.cpp      # Binary file/stream/buffer frequency counting
 │   ├── huffman_tree.cpp            # Min-heap greedy tree construction
 │   ├── code_generator.cpp          # Recursive DFS code generation & bit metrics
 │   ├── bit_writer.cpp              # Bit-packing & partial-byte padding implementation
-│   └── file_compressor.cpp         # Two-pass Huffman file compression & .huf header I/O
+│   ├── file_compressor.cpp         # Two-pass Huffman file compression & .huf header I/O
+│   ├── bit_reader.cpp              # Bit extraction & padding-aware stream reader
+│   └── file_decompressor.cpp       # Tree reconstruction & bitstream decoding engine
 └── tests/
     ├── test_huffman_node.cpp       # Unit tests for Node & CompareNode
     ├── test_huffman_tree.cpp       # Unit tests for FrequencyAnalyzer & HuffmanTree
     ├── test_code_generator.cpp     # Unit tests for CodeGenerator & prefix-free property
     ├── test_bit_writer.cpp         # Unit tests for BitWriter full/partial byte packing
-    └── test_file_compressor.cpp    # Unit tests for FileCompressor & .huf format
+    ├── test_file_compressor.cpp    # Unit tests for FileCompressor & .huf format
+    ├── test_bit_reader.cpp         # Unit tests for BitReader & meaningful bit limits
+    └── test_file_decompressor.cpp  # Round-trip & malformed-archive unit tests
 ```
 
 ---
@@ -155,8 +169,10 @@ FileZipper/
   - MSB-first `BitWriter` bit-packing stream utility (`bit_writer.h` / `bit_writer.cpp`)
   - Portable little-endian `.huf` binary archive header (`HufHeader`) and two-pass `FileCompressor` (`file_compressor.h` / `file_compressor.cpp`)
   - Unit tests (`test_bit_writer`, `test_file_compressor`) verifying bit-packing, padding, `.huf` header integrity, empty/single-char/binary files, and compression statistics
-- [ ] **Milestone 5: Decompression Engine & End-to-End Verification**
-  - Header parsing, tree reconstruction, bit-stream decoding, and round-trip integrity tests
+- [x] **Milestone 5: Decompression Engine & End-to-End Verification**
+  - MSB-first `BitReader` (`bit_reader.h` / `bit_reader.cpp`) with meaningful bit count tracking
+  - `FileDecompressor` (`file_decompressor.h` / `file_decompressor.cpp`) with header validation, tree reconstruction, bitstream decoding, and corruption detection
+  - Comprehensive round-trip and malformed-input unit tests (`test_bit_reader`, `test_file_decompressor`)
 - [ ] **Milestone 6: Qt Desktop GUI Integration**
   - Modern desktop interface for selecting files, viewing compression ratios, and compressing/decompressing archives
 
@@ -185,4 +201,6 @@ ctest --output-on-failure -V
 ./test_code_generator
 ./test_bit_writer
 ./test_file_compressor
+./test_bit_reader
+./test_file_decompressor
 ```

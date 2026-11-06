@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(FileZipper
-    VERSION 0.4.0
+    VERSION 0.5.0
     DESCRIPTION "Huffman-Based File Compression and Decompression Utility"
     LANGUAGES CXX
 )
@@ -29,6 +29,8 @@ add_library(huffman_core STATIC
     src/code_generator.cpp
     src/bit_writer.cpp
     src/file_compressor.cpp
+    src/bit_reader.cpp
+    src/file_decompressor.cpp
 )
 
 target_include_directories(huffman_core PUBLIC
@@ -67,3 +69,15 @@ add_executable(test_file_compressor
 )
 target_link_libraries(test_file_compressor PRIVATE huffman_core)
 add_test(NAME FileCompressorTest COMMAND test_file_compressor)
+
+add_executable(test_bit_reader
+    tests/test_bit_reader.cpp
+)
+target_link_libraries(test_bit_reader PRIVATE huffman_core)
+add_test(NAME BitReaderTest COMMAND test_bit_reader)
+
+add_executable(test_file_decompressor
+    tests/test_file_decompressor.cpp
+)
+target_link_libraries(test_file_decompressor PRIVATE huffman_core)
+add_test(NAME FileDecompressorTest COMMAND test_file_decompressor)
