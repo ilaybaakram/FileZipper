@@ -6,8 +6,10 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -175,6 +177,93 @@ int main(int argc, char* argv[]) {
         std::remove(invalidHuf.c_str());
         std::remove(invalidOut.c_str());
         std::cout << "[PASS] Test 4: Invalid input path and corrupted archive handled gracefully in GUI." << std::endl;
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 5: GUI Image File Selection Filter & Lossless Image Round-Trips
+    //         (.png, .jpg, .bmp, .gif, .webp, .tiff, .ico)
+    // -------------------------------------------------------------------------
+    {
+        // Verify file dialog filter supports all files, common image formats, and .huf archives
+        const QString filter = MainWindow::getInputFileDialogFilter();
+        assert(filter.contains("All Files (*)"));
+        assert(filter.contains("*.jpg"));
+        assert(filter.contains("*.jpeg"));
+        assert(filter.contains("*.png"));
+        assert(filter.contains("*.bmp"));
+        assert(filter.contains("*.gif"));
+        assert(filter.contains("*.webp"));
+        assert(filter.contains("*.tiff"));
+        assert(filter.contains("*.ico"));
+        assert(filter.contains("*.huf"));
+
+        // Create a deterministic 48x48 RGBA test pattern QImage
+        QImage testImg(48, 48, QImage::Format_ARGB32);
+        for (int y = 0; y < testImg.height(); ++y) {
+            for (int x = 0; x < testImg.width(); ++x) {
+                testImg.setPixelColor(x, y, QColor((x * 5) % 256, (y * 5) % 256, 180, 255));
+            }
+        }
+
+        const QStringList imageFormats = {"png", "jpg", "bmp"};
+        for (const QString& ext : imageFormats) {
+            const QString origName = QString("temp_gui_image.%1").arg(ext);
+            const QString hufName = origName + ".huf";
+            const QString restoredName = "restored_" + origName;
+
+            const QString origPath = workDir + "/" + origName;
+            const QString hufPath = workDir + "/" + hufName;
+            const QString restoredPath = workDir + "/" + restoredName;
+
+            assert(testImg.save(origPath, ext.toUpper().toUtf8().constData()));
+            const std::string originalBytes = readFileBytes(origPath.toStdString());
+            assert(!originalBytes.empty());
+
+            // Start from Decompress mode first to verify selecting an image switches to Compress mode
+            window.setOperationMode(false);
+            window.selectInputFile(origPath);
+            window.setOutputDirectory(workDir);
+            window.setOutputFileName(hufName);
+            window.triggerStartOperation();
+            waitForGuiTask(window);
+
+            OperationResult compRes = window.getLastResult();
+            assert(compRes.succeeded == true);
+            assert(compRes.isCompressMode == true);
+            assert(compRes.compressionStats.originalFileSize == originalBytes.size());
+            assert(QFileInfo::exists(hufPath));
+
+            // Select the .huf archive and decompress via GUI
+            window.selectInputFile(hufPath);
+            window.setOutputDirectory(workDir);
+            window.setOutputFileName(restoredName);
+            window.triggerStartOperation();
+            waitForGuiTask(window);
+
+            OperationResult decompRes = window.getLastResult();
+            assert(decompRes.succeeded == true);
+            assert(decompRes.isCompressMode == false);
+            assert(decompRes.decompressionStats.restoredFileSize == originalBytes.size());
+
+            // Verify byte-for-byte identity via memory comparison and system 'cmp -s'
+            const std::string restoredBytes = readFileBytes(restoredPath.toStdString());
+            assert(restoredBytes == originalBytes);
+            const std::string cmpCmd =
+                "cmp -s \"" + origPath.toStdString() + "\" \"" + restoredPath.toStdString() + "\"";
+            assert(std::system(cmpCmd.c_str()) == 0);
+
+            // Verify the restored image loads cleanly in QImage with identical dimensions
+            QImage restoredImg(restoredPath);
+            assert(!restoredImg.isNull());
+            assert(restoredImg.size() == testImg.size());
+
+            QFile::remove(origPath);
+            QFile::remove(hufPath);
+            QFile::remove(restoredPath);
+        }
+
+        std::cout << "[PASS] Test 5: GUI image filter and PNG/JPG/BMP round-trips verified byte-for-byte."
+                  << std::endl;
     }
 
     window.close();

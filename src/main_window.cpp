@@ -214,7 +214,10 @@ void MainWindow::setupUi() {
     fileNameLabel_->setObjectName("fileNamePrimary");
     fileNameLabel_->setWordWrap(true);
 
-    filePathLabel_ = new QLabel("Supports any text or binary file for compression, and .huf archives for decompression.", dropZone_);
+    filePathLabel_ = new QLabel(
+        "Supports any file — images (.png, .jpg, .bmp, .gif, .webp, .tiff, .ico), PDFs, text, or binary files — and .huf archives.",
+        dropZone_
+    );
     filePathLabel_->setObjectName("filePathSecondary");
     filePathLabel_->setWordWrap(true);
 
@@ -675,15 +678,21 @@ OperationResult MainWindow::getLastResult() const {
     return lastResult_;
 }
 
+QString MainWindow::getInputFileDialogFilter() {
+    return QStringLiteral(
+        "All Files (*);;"
+        "Image Files (*.jpg *.jpeg *.png *.bmp *.gif *.webp *.tiff *.tif *.ico);;"
+        "Huffman Archives (*.huf);;"
+        "Documents & Text Files (*.txt *.md *.csv *.json *.xml *.html *.pdf *.doc *.docx)"
+    );
+}
+
 void MainWindow::onBrowseInputClicked() {
-    const QString filter = compressRadio_->isChecked()
-                               ? "All Files (*.*)"
-                               : "Huffman Archives (*.huf);;All Files (*.*)";
     const QString chosen = QFileDialog::getOpenFileName(
         this,
         "Select Input File",
         outputDirEdit_->text().isEmpty() ? QDir::homePath() : outputDirEdit_->text(),
-        filter
+        getInputFileDialogFilter()
     );
     if (!chosen.isEmpty()) {
         selectInputFile(chosen);
@@ -695,7 +704,9 @@ void MainWindow::onClearInputClicked() {
     selectedFileSize_ = 0;
 
     fileNameLabel_->setText("Drag & drop a file here, or click Browse File");
-    filePathLabel_->setText("Supports any text or binary file for compression, and .huf archives for decompression.");
+    filePathLabel_->setText(
+        "Supports any file — images (.png, .jpg, .bmp, .gif, .webp, .tiff, .ico), PDFs, text, or binary files — and .huf archives."
+    );
     fileSizeBadge_->setText("No file selected");
     clearFileBtn_->setEnabled(false);
 

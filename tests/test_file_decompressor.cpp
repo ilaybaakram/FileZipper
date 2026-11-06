@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -29,10 +30,14 @@ std::string readFileBytes(const std::string& path) {
     return buffer;
 }
 
-void verifyRoundTrip(const std::string& testName, const std::string& originalContent) {
-    const std::string inPath = "temp_rt_in.bin";
-    const std::string hufPath = "temp_rt_compressed.huf";
-    const std::string outPath = "temp_rt_restored.bin";
+void verifyRoundTrip(
+    const std::string& testName,
+    const std::string& originalContent,
+    const std::string& extension = ".bin"
+) {
+    const std::string inPath = "temp_rt_in" + extension;
+    const std::string hufPath = "temp_rt_compressed" + extension + ".huf";
+    const std::string outPath = "temp_rt_restored" + extension;
 
     writeFileBytes(inPath, originalContent);
 
@@ -50,12 +55,16 @@ void verifyRoundTrip(const std::string& testName, const std::string& originalCon
     const std::string restoredContent = readFileBytes(outPath);
     assert(restoredContent == originalContent);
 
+    // Byte-by-byte verification using system 'cmp -s' utility
+    const std::string cmpCmd = "cmp -s \"" + inPath + "\" \"" + outPath + "\"";
+    assert(std::system(cmpCmd.c_str()) == 0);
+
     std::remove(inPath.c_str());
     std::remove(hufPath.c_str());
     std::remove(outPath.c_str());
 
     std::cout << "[PASS] " << testName << " (Restored " << decompStats.restoredFileSize
-              << " bytes from " << decompStats.decodedBitCount << " bits)." << std::endl;
+              << " bytes from " << decompStats.decodedBitCount << " bits, verified with cmp)." << std::endl;
 }
 
 } // namespace
@@ -113,6 +122,95 @@ int main() {
                             ": FileZipper C++17 Huffman Compression & Decompression Verification!\n";
         }
         verifyRoundTrip("Test 5: Large file (~105 KB) round-trip byte-for-byte match", largeContent);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 6: PNG image round-trip (binary PNG signature, chunks, null bytes,
+    //         and real assets/app_icon.png if available)
+    // -------------------------------------------------------------------------
+    {
+        std::string pngData(
+            "\x89PNG\r\n\x1a\n"
+            "\x00\x00\x00\x0dIHDR\x00\x00\x00\x20\x00\x00\x00\x20\x08\x06\x00\x00\x00\x73\x7a\x7a\xf4"
+            "\x00\x00\x01\x00IDAT\x78\x9c",
+            41
+        );
+        for (int i = 0; i < 256; ++i) {
+            pngData.push_back(static_cast<char>(static_cast<unsigned char>((i * 37) & 0xFF)));
+            pngData.push_back('\x00');
+        }
+        pngData.append("\x00\x00\x00\x00IEND\xae\x42\x60\x82", 12);
+
+        verifyRoundTrip("Test 6a: Binary PNG image structure round-trip", pngData, ".png");
+
+        // Also test the actual repository PNG icon asset if accessible
+        std::ifstream realPng("../assets/app_icon.png", std::ios::binary);
+        if (realPng.is_open()) {
+            realPng.close();
+            const std::string realPngBytes = readFileBytes("../assets/app_icon.png");
+            verifyRoundTrip("Test 6b: Real assets/app_icon.png image round-trip", realPngBytes, ".png");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 7: JPEG image round-trip (SOI 0xFFD8, JFIF APP0, DQT, SOF0, SOS,
+    //         entropy-coded scan containing all 256 byte values, EOI 0xFFD9)
+    // -------------------------------------------------------------------------
+    {
+        std::string jpegData(
+            "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x01\x00\x60\x00\x60\x00\x00"
+            "\xFF\xDB\x00\x43\x00",
+            25
+        );
+        for (int i = 0; i < 64; ++i) {
+            jpegData.push_back(static_cast<char>(1 + (i % 16)));
+        }
+        jpegData.append("\xFF\xC0\x00\x0B\x08\x00\x10\x00\x10\x01\x01\x11\x00\xFF\xDA\x00\x08\x01\x01\x00\x00\x3F\x00", 23);
+        // High-entropy scan stream containing all 256 byte values and byte-stuffed 0xFF00 sequences
+        for (int rep = 0; rep < 4; ++rep) {
+            for (int b = 0; b < 256; ++b) {
+                jpegData.push_back(static_cast<char>(static_cast<unsigned char>(b)));
+                if (b == 0xFF) {
+                    jpegData.push_back('\x00');
+                }
+            }
+        }
+        jpegData.append("\xFF\xD9", 2);
+
+        verifyRoundTrip("Test 7: JPEG (.jpg) binary image round-trip", jpegData, ".jpg");
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 8: BMP uncompressed 24-bit RGB image round-trip
+    // -------------------------------------------------------------------------
+    {
+        const int width = 32;
+        const int height = 32;
+        const int rowSize = width * 3;
+        const int pixelDataSize = rowSize * height;
+        const int fileSize = 54 + pixelDataSize;
+
+        std::string bmpData(54, '\0');
+        bmpData[0] = 'B';
+        bmpData[1] = 'M';
+        bmpData[2] = static_cast<char>(fileSize & 0xFF);
+        bmpData[3] = static_cast<char>((fileSize >> 8) & 0xFF);
+        bmpData[10] = 54; // Pixel data offset
+        bmpData[14] = 40; // BITMAPINFOHEADER size
+        bmpData[18] = static_cast<char>(width);
+        bmpData[22] = static_cast<char>(height);
+        bmpData[26] = 1;  // Planes
+        bmpData[28] = 24; // 24 bits per pixel
+
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                bmpData.push_back(static_cast<char>((x * 8) & 0xFF)); // Blue
+                bmpData.push_back(static_cast<char>((y * 8) & 0xFF)); // Green
+                bmpData.push_back(static_cast<char>(0xCC));           // Red
+            }
+        }
+
+        verifyRoundTrip("Test 8: Uncompressed 24-bit BMP (.bmp) image round-trip", bmpData, ".bmp");
     }
 
     // -------------------------------------------------------------------------

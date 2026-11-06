@@ -14,6 +14,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Export compile_commands.json for IDE / clangd tooling
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Prevent macOS Spotlight from indexing intermediate .app bundles inside the build directory
+if(APPLE)
+    file(WRITE "${CMAKE_BINARY_DIR}/.metadata_never_index" "")
+endif()
+
 # Enable strict compiler warnings
 if(MSVC)
     add_compile_options(/W4)

@@ -16,8 +16,10 @@ ASSETS_DIR="${PROJECT_ROOT}/assets"
 ICON_SRC_PNG="${ASSETS_DIR}/app_icon.png"
 ICON_OUT_ICNS="${ASSETS_DIR}/FileZipper.icns"
 ICONSET_TMP="/tmp/FileZipper_$$.iconset"
-STAGE_APP="/tmp/FileZipper_stage_$$.app"
+STAGE_DIR="/tmp/FileZipper_stage_$$"
+STAGE_APP="${STAGE_DIR}/FileZipper.app"
 FINAL_APP="${DIST_DIR}/FileZipper.app"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 echo "==> [1/5] Generating macOS .icns icon from ${ICON_SRC_PNG}..."
 if [[ ! -f "${ICON_SRC_PNG}" ]]; then
@@ -42,6 +44,8 @@ xattr -cr "${ICON_OUT_ICNS}"
 
 echo "==> [2/5] Configuring and building FileZipper in ${BUILD_DIR}..."
 mkdir -p "${BUILD_DIR}"
+# Prevent Spotlight from indexing intermediate build artifacts inside build/
+touch "${BUILD_DIR}/.metadata_never_index"
 cmake -S "${PROJECT_ROOT}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}" --target FileZipper
 
@@ -51,7 +55,9 @@ if [[ ! -d "${BUILD_DIR}/FileZipper.app" ]]; then
 fi
 
 echo "==> [3/5] Staging FileZipper.app in /tmp to avoid FileProvider extended attributes..."
-rm -rf "${STAGE_APP}"
+rm -rf "${STAGE_DIR}"
+mkdir -p "${STAGE_DIR}"
+touch "${STAGE_DIR}/.metadata_never_index"
 cp -R "${BUILD_DIR}/FileZipper.app" "${STAGE_APP}"
 mkdir -p "${STAGE_APP}/Contents/Resources"
 cp "${ICON_OUT_ICNS}" "${STAGE_APP}/Contents/Resources/FileZipper.icns"
@@ -80,8 +86,14 @@ codesign --verify --deep --strict "${STAGE_APP}"
 mkdir -p "${DIST_DIR}"
 rm -rf "${FINAL_APP}"
 cp -R "${STAGE_APP}" "${FINAL_APP}"
-rm -rf "${STAGE_APP}"
-touch "${FINAL_APP}"
+
+# Unregister temporary staging and intermediate CMake build bundles so they do not
+# appear as duplicate entries in Spotlight or Launchpad
+if [[ -x "${LSREGISTER}" ]]; then
+    "${LSREGISTER}" -u "${STAGE_APP}" >/dev/null 2>&1 || true
+    "${LSREGISTER}" -u "${BUILD_DIR}/FileZipper.app" >/dev/null 2>&1 || true
+fi
+rm -rf "${STAGE_DIR}"
 
 echo "==> Successfully packaged and verified standalone application:"
 echo "    ${FINAL_APP}"

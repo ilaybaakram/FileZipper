@@ -70,6 +70,7 @@ public:
     void triggerStartOperation();
     bool isProcessing() const;
     OperationResult getLastResult() const;
+    static QString getInputFileDialogFilter();
 
 private slots:
     void onBrowseInputClicked();

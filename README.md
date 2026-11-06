@@ -34,7 +34,8 @@ Standard uncompressed files represent every byte using a fixed 8-bit width. **Fi
 
 ## Features
 
-- **Lossless File Compression**: Compresses any text or binary file into a portable `.huf` archive.
+- **Lossless File Compression**: Compresses any text, document, image, or binary file into a portable `.huf` archive.
+- **Image & Binary File Support**: Supports common image formats (`.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`, `.tiff`, `.tif`, `.ico`) as well as PDFs, text files, and arbitrary binary files in raw binary mode without modifying or re-encoding pixel data.
 - **Lossless File Decompression**: Reconstructs the exact Huffman Tree from the `.huf` header and restores the original file byte-for-byte.
 - **Custom `.huf` Binary Format**: Uses a 4-byte `'HUF1'` magic signature, 64-bit little-endian file size and bit counters, and a 256-entry frequency table for cross-platform safety.
 - **Modern Qt 6 Desktop GUI**: Dark-themed desktop interface with drag-and-drop file support, automatic operation mode detection, custom vector tree icon, and non-blocking background worker threads (`QtConcurrent`).
@@ -171,18 +172,21 @@ You can then launch **FileZipper** anytime from **Applications** or **Spotlight 
 
 1. **Select a File**:
    - Drag and drop any file directly onto the **File Selection** card, or click **Browse File...** to pick a file from Finder.
+   - The file picker defaults to **All Files (`*`)** and provides convenient filters for **Image Files (`.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`, `.tiff`, `.tif`, `.ico`)**, **Huffman Archives (`.huf`)**, and **Documents & Text Files**.
    - The card displays the file's name, full path, and formatted byte size badge.
 2. **Compress a File**:
-   - When you select a normal file (e.g., `notes.txt`), **Compress File (Create .huf Archive)** is selected automatically.
-   - Review or customize the **Output Folder** and suggested **Output Filename** (`notes.txt.huf`).
+   - When you select a normal file (e.g., `notes.txt` or `banner.bmp`), **Compress File (Create .huf Archive)** is selected automatically.
+   - Review or customize the **Output Folder** and suggested **Output Filename** (`notes.txt.huf` or `banner.bmp.huf`).
    - Click **Compress File**.
 3. **Decompress a `.huf` Archive**:
-   - When you select a `.huf` archive (e.g., `notes.txt.huf`), **Decompress Archive (Restore from .huf)** is selected automatically and a safe output name (such as `notes.txt` or `restored_notes.txt`) is suggested.
+   - When you select a `.huf` archive (e.g., `notes.txt.huf` or `banner.bmp.huf`), **Decompress Archive (Restore from .huf)** is selected automatically and a safe output name preserving the original extension (such as `notes.txt`, `banner.bmp`, or `restored_banner.bmp`) is suggested.
    - Click **Decompress Archive**.
-4. **Understand the Results**:
+4. **Understand the Results & Image Compression Behavior**:
    - **Original Size / Compressed Size**: Exact byte counts before and after compression.
    - **Compression Ratio**: `Compressed Size / Original Size` expressed as a percentage.
-   - **Space Saved**: Percentage of bytes saved (`100% - Compression Ratio`). *(Note: Very small files under ~2 KB may show `+header` overhead because the `.huf` header stores the 2068-byte frequency table; larger text or repetitive files typically save 35%–70%+).*
+   - **Space Saved**: Percentage of bytes saved (`100% - Compression Ratio`).
+   - **Lossless Binary Guarantee**: FileZipper reads and writes every file in raw binary mode (`0x00`–`0xFF`). Image files are never decoded, resized, recolored, or lossily re-encoded; the decompressed image is guaranteed to be 100% byte-for-byte identical to the original.
+   - **Important Note on Image Formats**: Uncompressed or lightly compressed image formats (such as `.bmp`, uncompressed `.tiff`, or `.ico`) often contain repetitive byte patterns and compress significantly with Huffman coding. In contrast, formats that are **already entropy-compressed** (such as `.jpg`/`.jpeg`, `.png`, `.webp`, and `.gif`) already have near-uniform byte distributions; compressing them again with lossless Huffman coding will typically not shrink them further and may slightly increase the `.huf` archive size due to the 2068-byte `.huf` frequency table header.
    - Click **Open Output Folder** on the green completion banner to view the output file in Finder.
 
 ---
